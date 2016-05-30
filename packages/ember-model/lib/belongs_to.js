@@ -3,8 +3,8 @@ var get = Ember.get,
     set = Ember.set;
 
 function storeFor(record) {
-  if (record.container) {
-    return record.container.lookup('store:main');
+  if (record.store) {
+    return Ember.getOwner(record.store).lookup('store:main');
   }
 
   return null;
@@ -120,7 +120,7 @@ Ember.Model.reopen({
     if (meta.options.embedded) {
       var primaryKey = get(type, 'primaryKey'),
         id = idOrAttrs[primaryKey];
-      record = type.create({ isLoaded: false, id: id, container: this.container });
+      record = type.create({ isLoaded: false, id: id, store: this.store });
       record.load(id, idOrAttrs);
     } else {
       if (store) {

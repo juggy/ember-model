@@ -1,22 +1,21 @@
 function NIL() {}
 
 Ember.Model.Store = Ember.Object.extend({
-  container: null,
 
   modelFor: function(type) {
-    return this.container.lookupFactory('model:'+type);
+    return Ember.getOwner(this).resolveRegistration('model:'+type);
   },
 
   adapterFor: function(type) {
     var adapter = this.modelFor(type).adapter,
-        container = this.container;
+        owner = Ember.getOwner(this);
 
     if (adapter && adapter !== Ember.Model.adapter) {
       return adapter;
     } else {
-      adapter = container.lookupFactory('adapter:'+ type) ||
-        container.lookupFactory('adapter:application') ||
-        container.lookupFactory('adapter:REST');
+      adapter = owner.resolveRegistration('adapter:'+ type) ||
+                owner.resolveRegistration('adapter:application') ||
+                owner.resolveRegistration('adapter:REST');
 
       return adapter ? adapter.create() : adapter;
     }
@@ -25,7 +24,7 @@ Ember.Model.Store = Ember.Object.extend({
   createRecord: function(type, props) {
     var klass = this.modelFor(type);
     klass.reopenClass({adapter: this.adapterFor(type)});
-    return klass.create(Ember.merge({container: this.container}, props));
+    return klass.create(Ember.merge({store: this}, props));
   },
 
   find: function(type, id) {
@@ -41,13 +40,13 @@ Ember.Model.Store = Ember.Object.extend({
     // }
 
     if (id === NIL) {
-      return klass._findFetchAll(async, this.container);
+      return klass._findFetchAll(async, this);
     } else if (Ember.isArray(id)) {
-      return klass._findFetchMany(id, async, this.container);
+      return klass._findFetchMany(id, async, this);
     } else if (typeof id === 'object') {
-      return klass._findFetchQuery(id, async, this.container);
+      return klass._findFetchQuery(id, async, this);
     } else {
-      return klass._findFetchById(id, async, this.container);
+      return klass._findFetchById(id, async, this);
     }
   },
 

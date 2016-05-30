@@ -12,7 +12,7 @@ Ember.RecordArray = Ember.ArrayProxy.extend(Ember.Evented, {
 
   loadForFindMany: function(klass) {
     var self = this;
-    var content = get(this, '_ids').map(function(id) { return klass.cachedRecordForId(id, self.container); });
+    var content = get(this, '_ids').map(function(id) { return klass.cachedRecordForId(id, self.store); });
     set(this, 'content', Ember.A(content));
     this.notifyLoaded();
   },
@@ -25,7 +25,7 @@ Ember.RecordArray = Ember.ArrayProxy.extend(Ember.Evented, {
   materializeData: function(klass, data) {
     var self = this;
     return Ember.A(data.map(function(el) {
-      return klass.findFromCacheOrLoad(el, self.container); // FIXME
+      return klass.findFromCacheOrLoad(el, self.store); // FIXME
     }));
   },
 
