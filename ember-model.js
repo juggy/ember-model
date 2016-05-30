@@ -649,8 +649,7 @@ Ember.Model = Ember.Object.extend(Ember.Evented, {
       if (relationshipMeta.options.embedded) {
         relationshipType = relationshipMeta.type;
         if (typeof relationshipType === "string") {
-          relationshipType = this.getOwner().resolveRegistration('model:'+ relationshipType);
-          relationshipType = relationshipType.reopenClass({type: relationshipType});
+          relationshipType = this.getOwner()._lookupFactory('model:'+ relationshipType);
         }
 
         relationshipData = data[relationshipKey];
@@ -2049,9 +2048,7 @@ function NIL() {}
 Ember.Model.Store = Ember.Object.extend({
 
   modelFor: function(type) {
-    var t = Ember.getOwner(this).resolveRegistration('model:'+type);
-    t = t.reopenClass({type: type});
-    return t;
+    return Ember.getOwner(this)._lookupFactory('model:'+type);
   },
 
   adapterFor: function(type) {
@@ -2061,9 +2058,9 @@ Ember.Model.Store = Ember.Object.extend({
     if (adapter && adapter !== Ember.Model.adapter) {
       return adapter;
     } else {
-      adapter = owner.resolveRegistration('adapter:'+ type) ||
-                owner.resolveRegistration('adapter:application') ||
-                owner.resolveRegistration('adapter:REST');
+      adapter = owner._lookupFactory('adapter:'+ type) ||
+                owner._lookupFactory('adapter:application') ||
+                owner._lookupFactory('adapter:REST');
 
       return adapter ? adapter.create() : adapter;
     }

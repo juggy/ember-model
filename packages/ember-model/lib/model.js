@@ -137,8 +137,7 @@ Ember.Model = Ember.Object.extend(Ember.Evented, {
       if (relationshipMeta.options.embedded) {
         relationshipType = relationshipMeta.type;
         if (typeof relationshipType === "string") {
-          relationshipType = this.getOwner().resolveRegistration('model:'+ relationshipType);
-          relationshipType = relationshipType.reopenClass({type: relationshipType});
+          relationshipType = this.getOwner()._lookupFactory('model:'+ relationshipType);
         }
 
         relationshipData = data[relationshipKey];
