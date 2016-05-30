@@ -3,7 +3,9 @@ function NIL() {}
 Ember.Model.Store = Ember.Object.extend({
 
   modelFor: function(type) {
-    return Ember.getOwner(this).resolveRegistration('model:'+type);
+    var t = Ember.getOwner(this).resolveRegistration('model:'+type);
+    t = t.reopenClass({type: type});
+    return t;
   },
 
   adapterFor: function(type) {
@@ -22,9 +24,11 @@ Ember.Model.Store = Ember.Object.extend({
   },
 
   createRecord: function(type, props) {
-    var klass = this.modelFor(type);
+    var klass = this.modelFor(type),
+        attrs = Ember.merge({store: this}, props);
     klass.reopenClass({adapter: this.adapterFor(type)});
-    return klass.create(Ember.merge({store: this}, props));
+    Ember.setOwner(attrs, Ember.getOwner(this));
+    return klass.create(attrs);
   },
 
   find: function(type, id) {

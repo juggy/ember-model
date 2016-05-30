@@ -48,6 +48,10 @@ Ember.Model = Ember.Object.extend(Ember.Evented, {
   isDeleted: false,
   _dirtyAttributes: null,
 
+  getOwner: function(){
+    return Ember.getOwner(this.store);
+  },
+
   /**
     Called when attribute is accessed.
 
@@ -133,7 +137,8 @@ Ember.Model = Ember.Object.extend(Ember.Evented, {
       if (relationshipMeta.options.embedded) {
         relationshipType = relationshipMeta.type;
         if (typeof relationshipType === "string") {
-          relationshipType = Ember.get(Ember.lookup, relationshipType) || Ember.getOwner(this.store).resolveRegistration('model:'+ relationshipType);
+          relationshipType = this.getOwner().resolveRegistration('model:'+ relationshipType);
+          relationshipType = relationshipType.reopenClass({type: relationshipType});
         }
 
         relationshipData = data[relationshipKey];
@@ -661,6 +666,7 @@ Ember.Model.reopenClass({
     if(ref && ref.record) {
       if (! ref.record.store) {
         ref.record.store = store;
+        Ember.setOwner(ref.record, Ember.getOwner(store));
       }
       return ref.record;
     }
@@ -679,6 +685,7 @@ Ember.Model.reopenClass({
 
       attrs[primaryKey] = id;
       attrs.store = store;
+      Ember.setOwner(attrs, Ember.getOwner(store));
       record = this.create(attrs);
       if (!this.transient) {
         var sideloadedData = this.sideloadedData && this.sideloadedData[id];
@@ -754,7 +761,9 @@ Ember.Model.reopenClass({
   findFromCacheOrLoad: function(data, store) {
     var record;
     if (!data[get(this, 'primaryKey')]) {
-      record = this.create({isLoaded: false, store: store});
+      var attrs = {isLoaded: false, store: store};
+      Ember.setOwner(attrs, Ember.getOwner(store));
+      record = this.create(attrs);
     } else {
       record = this.cachedRecordForId(data[get(this, 'primaryKey')], store);
     }

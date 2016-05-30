@@ -170,7 +170,7 @@ Ember.RecordArray = Ember.ArrayProxy.extend(Ember.Evented, {
 
   loadForFindMany: function(klass) {
     var self = this;
-    var content = get(this, '_ids').map(function(id) { return klass.cachedRecordForId(id, self.container); });
+    var content = get(this, '_ids').map(function(id) { return klass.cachedRecordForId(id, self.store); });
     set(this, 'content', Ember.A(content));
     this.notifyLoaded();
   },
@@ -183,7 +183,7 @@ Ember.RecordArray = Ember.ArrayProxy.extend(Ember.Evented, {
   materializeData: function(klass, data) {
     var self = this;
     return Ember.A(data.map(function(el) {
-      return klass.findFromCacheOrLoad(el, self.container); // FIXME
+      return klass.findFromCacheOrLoad(el, self.store); // FIXME
     }));
   },
 
@@ -191,7 +191,7 @@ Ember.RecordArray = Ember.ArrayProxy.extend(Ember.Evented, {
     var modelClass = this.get('modelClass'),
         self = this,
         promises;
-
+    
     set(this, 'isLoaded', false);
     if (modelClass._findAllRecordArray === this) {
       return modelClass.adapter.findAll(modelClass, this);
@@ -320,7 +320,7 @@ Ember.ManyArray = Ember.RecordArray.extend({
     // need to add observer if it wasn't materialized before
     var observerNeeded = (content[idx].record) ? false : true;
 
-    var record = this.materializeRecord(idx, this.container);
+    var record = this.materializeRecord(idx, this.store);
 
     if (observerNeeded) {
       var isDirtyRecord = record.get('isDirty'), isNewRecord = record.get('isNew');
@@ -441,19 +441,19 @@ Ember.ManyArray = Ember.RecordArray.extend({
 });
 
 Ember.HasManyArray = Ember.ManyArray.extend({
-  materializeRecord: function(idx, container) {
+  materializeRecord: function(idx, store) {
     var klass = get(this, 'modelClass'),
         content = get(this, 'content'),
         reference = content.objectAt(idx),
         record = reference.record;
 
     if (record) {
-      if (! record.container) {
-        record.container = container;
+      if (! record.store) {
+        record.store = store;
       }
       return record;
     }
-    return klass._findFetchById(reference.id, false, container);
+    return klass._findFetchById(reference.id, false, store);
   },
 
   toJSON: function() {
@@ -479,7 +479,7 @@ Ember.EmbeddedHasManyArray = Ember.ManyArray.extend({
     return record; // FIXME: inject parent's id
   },
 
-  materializeRecord: function(idx, container) {
+  materializeRecord: function(idx, store) {
     var klass = get(this, 'modelClass'),
         primaryKey = get(klass, 'primaryKey'),
         content = get(this, 'content'),
@@ -490,14 +490,14 @@ Ember.EmbeddedHasManyArray = Ember.ManyArray.extend({
     if (reference.record) {
       record = reference.record;
     } else {
-      record = klass.create({ _reference: reference, container: container });
+      record = klass.create({ _reference: reference, store: store });
       reference.record = record;
       if (attrs) {
         record.load(attrs[primaryKey], attrs);
       }
     }
 
-    record.container = container;
+    record.store = store;
     return record;
   },
 
@@ -559,6 +559,10 @@ Ember.Model = Ember.Object.extend(Ember.Evented, {
   isNew: true,
   isDeleted: false,
   _dirtyAttributes: null,
+
+  getOwner: function(){
+    return Ember.getOwner(this.store);
+  },
 
   /**
     Called when attribute is accessed.
@@ -645,7 +649,8 @@ Ember.Model = Ember.Object.extend(Ember.Evented, {
       if (relationshipMeta.options.embedded) {
         relationshipType = relationshipMeta.type;
         if (typeof relationshipType === "string") {
-          relationshipType = Ember.get(Ember.lookup, relationshipType) || this.container.lookupFactory('model:'+ relationshipType);
+          relationshipType = this.getOwner().resolveRegistration('model:'+ relationshipType);
+          relationshipType = relationshipType.reopenClass({type: relationshipType});
         }
 
         relationshipData = data[relationshipKey];
@@ -757,7 +762,7 @@ Ember.Model = Ember.Object.extend(Ember.Evented, {
 
   reload: function() {
     this.getWithDefault('_dirtyAttributes', []).clear();
-    return this.constructor.reload(this.get(get(this.constructor, 'primaryKey')), this.container);
+    return this.constructor.reload(this.get(get(this.constructor, 'primaryKey')), this.store);
   },
 
   revert: function() {
@@ -961,8 +966,8 @@ Ember.Model.reopenClass({
     return this._findFetchQuery(params, true);
   },
 
-  _findFetchQuery: function(params, isFetch, container) {
-    var records = Ember.RecordArray.create({modelClass: this, _query: params, container: container});
+  _findFetchQuery: function(params, isFetch, store) {
+    var records = Ember.RecordArray.create({modelClass: this, _query: params, store: store});
 
     var promise = this.adapter.findQuery(this, records, params);
 
@@ -977,10 +982,10 @@ Ember.Model.reopenClass({
     return this._findFetchMany(ids, true);
   },
 
-  _findFetchMany: function(ids, isFetch, container) {
+  _findFetchMany: function(ids, isFetch, store) {
     Ember.assert("findFetchMany requires an array", Ember.isArray(ids));
 
-    var records = Ember.RecordArray.create({_ids: ids, modelClass: this, container: container}),
+    var records = Ember.RecordArray.create({_ids: ids, modelClass: this, store: store}),
         deferred;
 
     if (!this.recordArrays) { this.recordArrays = []; }
@@ -1002,7 +1007,7 @@ Ember.Model.reopenClass({
       this._currentBatchDeferreds.push(deferred);
     }
 
-    Ember.run.scheduleOnce('data', this, this._executeBatch, container);
+    Ember.run.scheduleOnce('data', this, this._executeBatch, store);
 
     return isFetch ? deferred.promise : records;
   },
@@ -1015,7 +1020,7 @@ Ember.Model.reopenClass({
     return this._findFetchAll(true);
   },
 
-  _findFetchAll: function(isFetch, container) {
+  _findFetchAll: function(isFetch, store) {
     var self = this;
 
     var currentFetchPromise = this._currentFindFetchAllPromise;
@@ -1031,7 +1036,7 @@ Ember.Model.reopenClass({
       }
     }
 
-    var records = this._findAllRecordArray = Ember.RecordArray.create({modelClass: this, container: container});
+    var records = this._findAllRecordArray = Ember.RecordArray.create({modelClass: this, store: store});
 
     var promise = this._currentFindFetchAllPromise = this.adapter.findAll(this, records);
 
@@ -1058,8 +1063,8 @@ Ember.Model.reopenClass({
     return this._findFetchById(id, true);
   },
 
-  _findFetchById: function(id, isFetch, container) {
-    var record = this.cachedRecordForId(id, container),
+  _findFetchById: function(id, isFetch, store) {
+    var record = this.cachedRecordForId(id, store),
         isLoaded = get(record, 'isLoaded'),
         adapter = get(this, 'adapter'),
         deferredOrPromise;
@@ -1083,8 +1088,8 @@ Ember.Model.reopenClass({
   _currentBatchRecordArrays: null,
   _currentBatchDeferreds: null,
 
-  reload: function(id, container) {
-    var record = this.cachedRecordForId(id, container);
+  reload: function(id, store) {
+    var record = this.cachedRecordForId(id, store);
     record.set('isLoaded', false);
     return this._fetchById(record, id);
   },
@@ -1109,7 +1114,7 @@ Ember.Model.reopenClass({
       if (!this._currentBatchDeferreds) { this._currentBatchDeferreds = []; }
       this._currentBatchDeferreds.push(deferred);
 
-      Ember.run.scheduleOnce('data', this, this._executeBatch, record.container);
+      Ember.run.scheduleOnce('data', this, this._executeBatch, record.store);
 
       return deferred.promise;
     } else {
@@ -1117,7 +1122,7 @@ Ember.Model.reopenClass({
     }
   },
 
-  _executeBatch: function(container) {
+  _executeBatch: function(store) {
     var batchIds = this._currentBatchIds,
         batchRecordArrays = this._currentBatchRecordArrays,
         batchDeferreds = this._currentBatchDeferreds,
@@ -1137,9 +1142,9 @@ Ember.Model.reopenClass({
     }
 
     if (requestIds.length === 1) {
-      promise = get(this, 'adapter').find(this.cachedRecordForId(requestIds[0], container), requestIds[0]);
+      promise = get(this, 'adapter').find(this.cachedRecordForId(requestIds[0], store), requestIds[0]);
     } else {
-      var recordArray = Ember.RecordArray.create({_ids: batchIds, container: container});
+      var recordArray = Ember.RecordArray.create({_ids: batchIds, store: store});
       if (requestIds.length === 0) {
         promise = new Ember.RSVP.Promise(function(resolve, reject) { resolve(recordArray); });
         recordArray.notifyLoaded();
@@ -1168,21 +1173,22 @@ Ember.Model.reopenClass({
     });
   },
 
-  getCachedReferenceRecord: function(id, container){
+  getCachedReferenceRecord: function(id, store){
     var ref = this._getReferenceById(id);
     if(ref && ref.record) {
-      if (! ref.record.container) {
-        ref.record.container = container;
+      if (! ref.record.store) {
+        ref.record.store = store;
+        Ember.setOwner(ref.record, Ember.getOwner(store));
       }
       return ref.record;
     }
     return undefined;
   },
 
-  cachedRecordForId: function(id, container) {
+  cachedRecordForId: function(id, store) {
     var record;
     if (!this.transient) {
-      record = this.getCachedReferenceRecord(id, container);
+      record = this.getCachedReferenceRecord(id, store);
     }
 
     if (!record) {
@@ -1190,7 +1196,8 @@ Ember.Model.reopenClass({
           attrs = {isLoaded: false};
 
       attrs[primaryKey] = id;
-      attrs.container = container;
+      attrs.store = store;
+      Ember.setOwner(attrs, Ember.getOwner(store));
       record = this.create(attrs);
       if (!this.transient) {
         var sideloadedData = this.sideloadedData && this.sideloadedData[id];
@@ -1263,12 +1270,14 @@ Ember.Model.reopenClass({
   },
 
   // FIXME
-  findFromCacheOrLoad: function(data, container) {
+  findFromCacheOrLoad: function(data, store) {
     var record;
     if (!data[get(this, 'primaryKey')]) {
-      record = this.create({isLoaded: false, container: container});
+      var attrs = {isLoaded: false, store: store};
+      Ember.setOwner(attrs, Ember.getOwner(store));
+      record = this.create(attrs);
     } else {
-      record = this.cachedRecordForId(data[get(this, 'primaryKey')], container);
+      record = this.cachedRecordForId(data[get(this, 'primaryKey')], store);
     }
     // set(record, 'data', data);
     record.load(data[get(this, 'primaryKey')], data);
@@ -1293,7 +1302,7 @@ Ember.Model.reopenClass({
     }, this).forEach(callback);
   },
 
-  load: function(hashes, container) {
+  load: function(hashes, store) {
     if (Ember.typeOf(hashes) !== 'array') { hashes = [hashes]; }
 
     if (!this.sideloadedData) { this.sideloadedData = {}; }
@@ -1301,7 +1310,7 @@ Ember.Model.reopenClass({
     for (var i = 0, l = hashes.length; i < l; i++) {
       var hash = hashes[i],
           primaryKey = hash[get(this, 'primaryKey')],
-          record = this.getCachedReferenceRecord(primaryKey, container);
+          record = this.getCachedReferenceRecord(primaryKey, store);
 
       if (record) {
         record.load(primaryKey, hash);
@@ -1414,7 +1423,7 @@ function getType(record) {
     this.type = get(Ember.lookup, this.type);
 
     if (!this.type) {
-      var store = record.container.lookup('store:main');
+      var store = Ember.getOwner(record.store).lookup('store:main');
       this.type = store.modelFor(type);
       this.type.reopenClass({ adapter: store.adapterFor(type) });
     }
@@ -1434,7 +1443,7 @@ Ember.hasMany = function(type, options) {
       Ember.assert("Type cannot be empty", !Ember.isEmpty(type));
 
       var key = options.key || propertyKey;
-      return this.getHasMany(key, type, meta, this.container);
+      return this.getHasMany(key, type, meta, this.store);
     },
     set: function(propertyKey, newContentArray, existingArray) {
       return existingArray.setObjects(newContentArray);
@@ -1443,7 +1452,7 @@ Ember.hasMany = function(type, options) {
 };
 
 Ember.Model.reopen({
-  getHasMany: function(key, type, meta, container) {
+  getHasMany: function(key, type, meta, store) {
     var embedded = meta.options.embedded,
         collectionClass = embedded ? Ember.EmbeddedHasManyArray : Ember.HasManyArray;
 
@@ -1454,7 +1463,7 @@ Ember.Model.reopen({
       embedded: embedded,
       key: key,
       relationshipKey: meta.relationshipKey,
-      container: container
+      store: store
     });
 
     this._registerHasManyArray(collection);
@@ -1472,8 +1481,8 @@ var get = Ember.get,
     set = Ember.set;
 
 function storeFor(record) {
-  if (record.container) {
-    return record.container.lookup('store:main');
+  if (record.store) {
+    return Ember.getOwner(record.store).lookup('store:main');
   }
 
   return null;
@@ -1589,7 +1598,7 @@ Ember.Model.reopen({
     if (meta.options.embedded) {
       var primaryKey = get(type, 'primaryKey'),
         id = idOrAttrs[primaryKey];
-      record = type.create({ isLoaded: false, id: id, container: this.container });
+      record = type.create({ isLoaded: false, id: id, store: this.store });
       record.load(id, idOrAttrs);
     } else {
       if (store) {
@@ -2038,31 +2047,34 @@ Ember.onLoad('Ember.Application', function(Application) {
 function NIL() {}
 
 Ember.Model.Store = Ember.Object.extend({
-  container: null,
 
   modelFor: function(type) {
-    return this.container.lookupFactory('model:'+type);
+    var t = Ember.getOwner(this).resolveRegistration('model:'+type);
+    t = t.reopenClass({type: type});
+    return t;
   },
 
   adapterFor: function(type) {
     var adapter = this.modelFor(type).adapter,
-        container = this.container;
+        owner = Ember.getOwner(this);
 
     if (adapter && adapter !== Ember.Model.adapter) {
       return adapter;
     } else {
-      adapter = container.lookupFactory('adapter:'+ type) ||
-        container.lookupFactory('adapter:application') ||
-        container.lookupFactory('adapter:REST');
+      adapter = owner.resolveRegistration('adapter:'+ type) ||
+                owner.resolveRegistration('adapter:application') ||
+                owner.resolveRegistration('adapter:REST');
 
       return adapter ? adapter.create() : adapter;
     }
   },
 
   createRecord: function(type, props) {
-    var klass = this.modelFor(type);
+    var klass = this.modelFor(type),
+        attrs = Ember.merge({store: this}, props);
     klass.reopenClass({adapter: this.adapterFor(type)});
-    return klass.create(Ember.merge({container: this.container}, props));
+    Ember.setOwner(attrs, Ember.getOwner(this));
+    return klass.create(attrs);
   },
 
   find: function(type, id) {
@@ -2078,13 +2090,13 @@ Ember.Model.Store = Ember.Object.extend({
     // }
 
     if (id === NIL) {
-      return klass._findFetchAll(async, this.container);
+      return klass._findFetchAll(async, this);
     } else if (Ember.isArray(id)) {
-      return klass._findFetchMany(id, async, this.container);
+      return klass._findFetchMany(id, async, this);
     } else if (typeof id === 'object') {
-      return klass._findFetchQuery(id, async, this.container);
+      return klass._findFetchQuery(id, async, this);
     } else {
-      return klass._findFetchById(id, async, this.container);
+      return klass._findFetchById(id, async, this);
     }
   },
 
