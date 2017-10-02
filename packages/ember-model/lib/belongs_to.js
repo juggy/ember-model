@@ -4,7 +4,7 @@ var get = Ember.get,
 
 function storeFor(record) {
   if (record.store) {
-    return Ember.getOwner(record.store).lookup('store:main');
+    return record.store;
   }
 
   return null;
@@ -14,13 +14,9 @@ function getType(record) {
   var type = this.type;
 
   if (typeof this.type === "string" && this.type) {
-    type = Ember.get(Ember.lookup, this.type);
-
-    if (!type) {
-      var store = storeFor(record);
-      type = store.modelFor(this.type);
-      type.reopenClass({ adapter: store.adapterFor(this.type) });
-    }
+    var store = record.store;
+        type = store.modelFor(this.type);
+        type.reopenClass({ adapter: store.adapterFor(this.type) });
   }
 
   return type;
@@ -119,8 +115,8 @@ Ember.Model.reopen({
 
     if (meta.options.embedded) {
       var primaryKey = get(type, 'primaryKey'),
-        id = idOrAttrs[primaryKey];
-      record = type.create({ isLoaded: false, id: id, store: this.store });
+          id = idOrAttrs[primaryKey];
+      record = store.createForType(type.toString(), { isLoaded: false, id: id, store: this.store });
       record.load(id, idOrAttrs);
     } else {
       if (store) {

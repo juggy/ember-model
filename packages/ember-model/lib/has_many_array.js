@@ -194,8 +194,9 @@ Ember.HasManyArray = Ember.ManyArray.extend({
 
 Ember.EmbeddedHasManyArray = Ember.ManyArray.extend({
   create: function(attrs) {
-    var klass = get(this, 'modelClass'),
-        record = klass.create(attrs);
+    var store = this.get("store"),
+        klass = get(this, 'modelClass'),
+        record = store.createForType(klass.toString(), attrs);
 
     this.pushObject(record);
 
@@ -213,7 +214,7 @@ Ember.EmbeddedHasManyArray = Ember.ManyArray.extend({
     if (reference.record) {
       record = reference.record;
     } else {
-      record = klass.create({ _reference: reference, store: store });
+      record = store.createForType(klass.toString(), { _reference: reference, store: store });
       reference.record = record;
       if (attrs) {
         record.load(attrs[primaryKey], attrs);

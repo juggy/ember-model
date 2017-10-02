@@ -137,7 +137,7 @@ Ember.Model = Ember.Object.extend(Ember.Evented, {
       if (relationshipMeta.options.embedded) {
         relationshipType = relationshipMeta.type;
         if (typeof relationshipType === "string") {
-          relationshipType = this.getOwner()._lookupFactory('model:'+ relationshipType);
+          relationshipType = this.getOwner().factoryFor('model:'+ relationshipType).class;
         }
 
         relationshipData = data[relationshipKey];
@@ -684,8 +684,7 @@ Ember.Model.reopenClass({
 
       attrs[primaryKey] = id;
       attrs.store = store;
-      Ember.setOwner(attrs, Ember.getOwner(store));
-      record = this.create(attrs);
+      record = store.createForType(this.toString(), attrs);
       if (!this.transient) {
         var sideloadedData = this.sideloadedData && this.sideloadedData[id];
         if (sideloadedData) {
@@ -761,8 +760,7 @@ Ember.Model.reopenClass({
     var record;
     if (!data[get(this, 'primaryKey')]) {
       var attrs = {isLoaded: false, store: store};
-      Ember.setOwner(attrs, Ember.getOwner(store));
-      record = this.create(attrs);
+      record = store.createForType(this.toString(), attrs);
     } else {
       record = this.cachedRecordForId(data[get(this, 'primaryKey')], store);
     }

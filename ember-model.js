@@ -191,7 +191,7 @@ Ember.RecordArray = Ember.ArrayProxy.extend(Ember.Evented, {
     var modelClass = this.get('modelClass'),
         self = this,
         promises;
-    
+
     set(this, 'isLoaded', false);
     if (modelClass._findAllRecordArray === this) {
       return modelClass.adapter.findAll(modelClass, this);
@@ -472,8 +472,9 @@ Ember.HasManyArray = Ember.ManyArray.extend({
 
 Ember.EmbeddedHasManyArray = Ember.ManyArray.extend({
   create: function(attrs) {
-    var klass = get(this, 'modelClass'),
-        record = klass.create(attrs);
+    var store = this.get("store"),
+        klass = get(this, 'modelClass'),
+        record = store.createForType(klass.toString(), attrs);
 
     this.pushObject(record);
 
@@ -491,7 +492,7 @@ Ember.EmbeddedHasManyArray = Ember.ManyArray.extend({
     if (reference.record) {
       record = reference.record;
     } else {
-      record = klass.create({ _reference: reference, store: store });
+      record = store.createForType(klass.toString(), { _reference: reference, store: store });
       reference.record = record;
       if (attrs) {
         record.load(attrs[primaryKey], attrs);
@@ -650,7 +651,7 @@ Ember.Model = Ember.Object.extend(Ember.Evented, {
       if (relationshipMeta.options.embedded) {
         relationshipType = relationshipMeta.type;
         if (typeof relationshipType === "string") {
-          relationshipType = this.getOwner()._lookupFactory('model:'+ relationshipType);
+          relationshipType = this.getOwner().factoryFor('model:'+ relationshipType).class;
         }
 
         relationshipData = data[relationshipKey];
@@ -1197,8 +1198,7 @@ Ember.Model.reopenClass({
 
       attrs[primaryKey] = id;
       attrs.store = store;
-      Ember.setOwner(attrs, Ember.getOwner(store));
-      record = this.create(attrs);
+      record = store.createForType(this.toString(), attrs);
       if (!this.transient) {
         var sideloadedData = this.sideloadedData && this.sideloadedData[id];
         if (sideloadedData) {
@@ -1274,8 +1274,7 @@ Ember.Model.reopenClass({
     var record;
     if (!data[get(this, 'primaryKey')]) {
       var attrs = {isLoaded: false, store: store};
-      Ember.setOwner(attrs, Ember.getOwner(store));
-      record = this.create(attrs);
+      record = store.createForType(this.toString(), attrs);
     } else {
       record = this.cachedRecordForId(data[get(this, 'primaryKey')], store);
     }
@@ -1482,7 +1481,7 @@ var get = Ember.get,
 
 function storeFor(record) {
   if (record.store) {
-    return Ember.getOwner(record.store).lookup('store:main');
+    return record.store;
   }
 
   return null;
@@ -1492,13 +1491,9 @@ function getType(record) {
   var type = this.type;
 
   if (typeof this.type === "string" && this.type) {
-    type = Ember.get(Ember.lookup, this.type);
-
-    if (!type) {
-      var store = storeFor(record);
-      type = store.modelFor(this.type);
-      type.reopenClass({ adapter: store.adapterFor(this.type) });
-    }
+    var store = record.store;
+        type = store.modelFor(this.type);
+        type.reopenClass({ adapter: store.adapterFor(this.type) });
   }
 
   return type;
@@ -1597,8 +1592,8 @@ Ember.Model.reopen({
 
     if (meta.options.embedded) {
       var primaryKey = get(type, 'primaryKey'),
-        id = idOrAttrs[primaryKey];
-      record = type.create({ isLoaded: false, id: id, store: this.store });
+          id = idOrAttrs[primaryKey];
+      record = store.createForType(type.toString(), { isLoaded: false, id: id, store: this.store });
       record.load(id, idOrAttrs);
     } else {
       if (store) {
@@ -2049,7 +2044,16 @@ function NIL() {}
 Ember.Model.Store = Ember.Object.extend({
 
   modelFor: function(type) {
-    return Ember.getOwner(this)._lookupFactory('model:'+type);
+    type = typeof type === 'string' ? type : type.toString().replace("model:", "");
+    var klass = Ember.getOwner(this).factoryFor('model:'+type).class;
+    klass[Ember.NAME_KEY] = 'model:' + type;
+    return klass;
+  },
+
+  createForType: function(type, opts){
+    type = typeof type === 'string' ? type : type.toString();
+    type = type.replace("model:", "");
+    return Ember.getOwner(this).factoryFor('model:'+type).create(opts);
   },
 
   adapterFor: function(type) {
@@ -2059,20 +2063,17 @@ Ember.Model.Store = Ember.Object.extend({
     if (adapter && adapter !== Ember.Model.adapter) {
       return adapter;
     } else {
-      adapter = owner._lookupFactory('adapter:'+ type) ||
-                owner._lookupFactory('adapter:application') ||
-                owner._lookupFactory('adapter:REST');
+      adapter = owner.factoryFor('adapter:'+ type) ||
+                owner.factoryFor('adapter:application') ||
+                owner.factoryFor('adapter:REST');
 
       return adapter ? adapter.create() : adapter;
     }
   },
 
   createRecord: function(type, props) {
-    var klass = this.modelFor(type),
-        attrs = Ember.merge({store: this}, props);
-    klass.reopenClass({adapter: this.adapterFor(type)});
-    Ember.setOwner(attrs, Ember.getOwner(this));
-    return klass.create(attrs);
+    var attrs = Ember.merge({store: this}, props);
+    return this.createForType(type, attrs);
   },
 
   find: function(type, id) {

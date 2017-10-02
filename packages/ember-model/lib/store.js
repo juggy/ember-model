@@ -3,7 +3,16 @@ function NIL() {}
 Ember.Model.Store = Ember.Object.extend({
 
   modelFor: function(type) {
-    return Ember.getOwner(this)._lookupFactory('model:'+type);
+    type = typeof type === 'string' ? type : type.toString().replace("model:", "");
+    var klass = Ember.getOwner(this).factoryFor('model:'+type).class;
+    klass[Ember.NAME_KEY] = 'model:' + type;
+    return klass;
+  },
+
+  createForType: function(type, opts){
+    type = typeof type === 'string' ? type : type.toString();
+    type = type.replace("model:", "");
+    return Ember.getOwner(this).factoryFor('model:'+type).create(opts);
   },
 
   adapterFor: function(type) {
@@ -13,20 +22,17 @@ Ember.Model.Store = Ember.Object.extend({
     if (adapter && adapter !== Ember.Model.adapter) {
       return adapter;
     } else {
-      adapter = owner._lookupFactory('adapter:'+ type) ||
-                owner._lookupFactory('adapter:application') ||
-                owner._lookupFactory('adapter:REST');
+      adapter = owner.factoryFor('adapter:'+ type) ||
+                owner.factoryFor('adapter:application') ||
+                owner.factoryFor('adapter:REST');
 
       return adapter ? adapter.create() : adapter;
     }
   },
 
   createRecord: function(type, props) {
-    var klass = this.modelFor(type),
-        attrs = Ember.merge({store: this}, props);
-    klass.reopenClass({adapter: this.adapterFor(type)});
-    Ember.setOwner(attrs, Ember.getOwner(this));
-    return klass.create(attrs);
+    var attrs = Ember.merge({store: this}, props);
+    return this.createForType(type, attrs);
   },
 
   find: function(type, id) {
