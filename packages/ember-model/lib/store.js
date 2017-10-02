@@ -12,7 +12,10 @@ Ember.Model.Store = Ember.Object.extend({
   createForType: function(type, opts){
     type = typeof type === 'string' ? type : type.toString();
     type = type.replace("model:", "");
-    return Ember.getOwner(this).factoryFor('model:'+type).create(opts);
+
+    var record = Ember.getOwner(this).factoryFor('model:'+type).create(opts);
+    record.constructor[Ember.NAME_KEY] = 'model:' + type;
+    return record;
   },
 
   adapterFor: function(type) {
